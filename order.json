@@ -1,0 +1,12 @@
+{
+  "id": 1234567890,
+  "line_items": [
+    {
+      "product_id": 9876543210,
+      "properties": [
+        { "name": "Check In", "value": "2025-12-20" },
+        { "name": "Check Out", "value": "2025-12-22" }
+      ]
+    }
+  ]
+}
