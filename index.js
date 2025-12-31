@@ -139,6 +139,7 @@ app.post("/create-draft-order", async (req, res) => {
         tax_exempt: true // optional, keeps exact total
       }
     };
+    
 
     // 🔹 Debug log to see payload before sending to Shopify
     console.log("Draft order payload:", JSON.stringify(draftOrderPayload, null, 2));
@@ -156,7 +157,7 @@ console.log("FINAL DRAFT ORDER:", draftOrder);
 
 // ✅ ALWAYS RETURN INVOICE URL
 res.json({
-  checkoutUrl: draftOrder.invoice_url
+  invoiceUrl: draftOrder.invoice_url
 });
 
 
