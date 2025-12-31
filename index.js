@@ -135,7 +135,7 @@ app.post("/create-draft-order", async (req, res) => {
         ],
         customer: { email },
         use_customer_default_address: true,
-        send_invoice: false,
+        send_invoice: true,
         tax_exempt: true // optional, keeps exact total
       }
     };
@@ -199,3 +199,4 @@ app.post("/webhooks/orders-create", async (req, res) => {
 app.listen(PORT || 3000, () => {
   console.log("🚀 Booking server running");
 });
+  
