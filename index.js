@@ -104,10 +104,12 @@ app.post("/calculate-price", async (req, res) => {
   }
 });
 
-// Create Draft Order (dynamic pricing)
+// ---------------- Create Draft Order (dynamic pricing) ----------------
 app.post("/create-draft-order", async (req, res) => {
   try {
     const { productId, checkin, checkout, guests, totalPrice, email } = req.body;
+
+    // ✅ Validate required fields
     if (!productId || !checkin || !checkout || !guests || !totalPrice || !email) {
       return res.status(400).json({ error: "Missing required fields" });
     }
@@ -121,9 +123,9 @@ app.post("/create-draft-order", async (req, res) => {
       draft_order: {
         line_items: [
           {
-            variant_id: variantId, // must be valid
+            variant_id: variantId,
             quantity: 1,
-            custom_price: totalPrice.toFixed(2), // override with dynamic price
+            custom_price: Number(totalPrice.toFixed(2)), // ✅ must be a number
             properties: [
               { name: "Check In", value: checkin },
               { name: "Check Out", value: checkout },
@@ -134,20 +136,32 @@ app.post("/create-draft-order", async (req, res) => {
         customer: { email },
         use_customer_default_address: true,
         send_invoice: true,
-        tax_exempt: true // prevents Shopify from adding taxes if you want exact total
+        tax_exempt: true // optional, keeps exact total
       }
     };
+
+    // 🔹 Debug log to see payload before sending to Shopify
+    console.log("Draft order payload:", JSON.stringify(draftOrderPayload, null, 2));
 
     // 3️⃣ Create draft order
     const response = await shopify.post("/draft_orders.json", draftOrderPayload);
 
+    // 🔹 Debug log Shopify response
+    console.log("Shopify draft order response:", response.data.draft_order);
+
     // 4️⃣ Return checkout URL to frontend
-    res.json({ checkoutUrl: response.data.draft_order.invoice_url });
+    if (response.data?.draft_order?.invoice_url) {
+      res.json({ checkoutUrl: response.data.draft_order.invoice_url });
+    } else {
+      throw new Error("Draft order creation failed. No invoice URL returned.");
+    }
+
   } catch (err) {
-    console.error(err.response?.data || err);
+    console.error("Error in /create-draft-order:", err.response?.data || err);
     res.status(500).json({ error: "Error creating draft order" });
   }
 });
+
 
 
 // Webhook: save bookings when order created
