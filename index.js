@@ -135,7 +135,7 @@ app.post("/create-draft-order", async (req, res) => {
         ],
         customer: { email },
         use_customer_default_address: true,
-        send_invoice: true,
+        send_invoice: false,
         tax_exempt: true // optional, keeps exact total
       }
     };
