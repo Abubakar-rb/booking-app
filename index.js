@@ -104,7 +104,7 @@ app.post("/calculate-price", async (req, res) => {
   }
 });
 
-// Create Draft Order (NEW: for dynamic pricing)
+// Create Draft Order (dynamic pricing)
 app.post("/create-draft-order", async (req, res) => {
   try {
     const { productId, checkin, checkout, guests, totalPrice, email } = req.body;
@@ -112,13 +112,18 @@ app.post("/create-draft-order", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // 1️⃣ Fetch product to get a valid variant ID
+    const productRes = await shopify.get(`/products/${productId}.json`);
+    const variantId = productRes.data.product.variants[0].id; // pick the first variant
+
+    // 2️⃣ Draft order payload
     const draftOrderPayload = {
       draft_order: {
         line_items: [
           {
-            variant_id: productId,
+            variant_id: variantId, // must be valid
             quantity: 1,
-            price: totalPrice.toFixed(2),
+            price: totalPrice.toFixed(2), // override with dynamic price
             properties: {
               "Check In": checkin,
               "Check Out": checkout,
@@ -132,8 +137,11 @@ app.post("/create-draft-order", async (req, res) => {
       }
     };
 
+    // 3️⃣ Create draft order
     const response = await shopify.post("/draft_orders.json", draftOrderPayload);
-    res.json({ invoice_url: response.data.draft_order.invoice_url });
+
+    // 4️⃣ Return checkout URL to frontend
+    res.json({ checkoutUrl: response.data.draft_order.invoice_url });
   } catch (err) {
     console.error(err.response?.data || err);
     res.status(500).json({ error: "Error creating draft order" });
