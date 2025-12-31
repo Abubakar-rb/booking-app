@@ -104,6 +104,42 @@ app.post("/calculate-price", async (req, res) => {
   }
 });
 
+// Create Draft Order (NEW: for dynamic pricing)
+app.post("/create-draft-order", async (req, res) => {
+  try {
+    const { productId, checkin, checkout, guests, totalPrice, email } = req.body;
+    if (!productId || !checkin || !checkout || !guests || !totalPrice || !email) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const draftOrderPayload = {
+      draft_order: {
+        line_items: [
+          {
+            variant_id: productId,
+            quantity: 1,
+            price: totalPrice.toFixed(2),
+            properties: {
+              "Check In": checkin,
+              "Check Out": checkout,
+              "Guests": guests
+            }
+          }
+        ],
+        customer: { email },
+        use_customer_default_address: true,
+        send_invoice: true
+      }
+    };
+
+    const response = await shopify.post("/draft_orders.json", draftOrderPayload);
+    res.json({ invoice_url: response.data.draft_order.invoice_url });
+  } catch (err) {
+    console.error(err.response?.data || err);
+    res.status(500).json({ error: "Error creating draft order" });
+  }
+});
+
 // Webhook: save bookings when order created
 app.post("/webhooks/orders-create", async (req, res) => {
   try {
