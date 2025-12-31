@@ -116,24 +116,25 @@ app.post("/create-draft-order", async (req, res) => {
     const productRes = await shopify.get(`/products/${productId}.json`);
     const variantId = productRes.data.product.variants[0].id; // pick the first variant
 
-    // 2️⃣ Draft order payload
+    // 2️⃣ Draft order payload with proper custom_price & properties array
     const draftOrderPayload = {
       draft_order: {
         line_items: [
           {
             variant_id: variantId, // must be valid
             quantity: 1,
-            price: totalPrice.toFixed(2), // override with dynamic price
-            properties: {
-              "Check In": checkin,
-              "Check Out": checkout,
-              "Guests": guests
-            }
+            custom_price: totalPrice.toFixed(2), // override with dynamic price
+            properties: [
+              { name: "Check In", value: checkin },
+              { name: "Check Out", value: checkout },
+              { name: "Guests", value: guests }
+            ]
           }
         ],
         customer: { email },
         use_customer_default_address: true,
-        send_invoice: true
+        send_invoice: true,
+        tax_exempt: true // prevents Shopify from adding taxes if you want exact total
       }
     };
 
@@ -147,6 +148,7 @@ app.post("/create-draft-order", async (req, res) => {
     res.status(500).json({ error: "Error creating draft order" });
   }
 });
+
 
 // Webhook: save bookings when order created
 app.post("/webhooks/orders-create", async (req, res) => {
