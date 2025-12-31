@@ -149,12 +149,16 @@ app.post("/create-draft-order", async (req, res) => {
     // 🔹 Debug log Shopify response
     console.log("Shopify draft order response:", response.data.draft_order);
 
-    // 4️⃣ Return checkout URL to frontend
-    if (response.data?.draft_order?.invoice_url) {
-      res.json({ checkoutUrl: response.data.draft_order.invoice_url });
-    } else {
-      throw new Error("Draft order creation failed. No invoice URL returned.");
-    }
+ const draftOrder = response.data.draft_order;
+
+// 🔴 LOG IT
+console.log("FINAL DRAFT ORDER:", draftOrder);
+
+// ✅ ALWAYS RETURN INVOICE URL
+res.json({
+  checkoutUrl: draftOrder.invoice_url
+});
+
 
   } catch (err) {
     console.error("Error in /create-draft-order:", err.response?.data || err);
