@@ -5,6 +5,7 @@ const axios = require("axios");
 const cors = require("cors");
 
 const app = express();
+
 const { SHOPIFY_STORE, SHOPIFY_API_TOKEN, PORT } = process.env;
 
 app.use(bodyParser.json());
@@ -18,7 +19,6 @@ const shopify = axios.create({
   }
 });
 
-// --------------------- Booking Utilities ---------------------
 function isOverlapping(newB, existing) {
   return existing.some(b =>
     new Date(newB.start) < new Date(b.end) &&
@@ -29,10 +29,14 @@ function isOverlapping(newB, existing) {
 async function getBookings(productId) {
   try {
     const res = await shopify.get(`/products/${productId}/metafields.json`);
-    const field = res.data.metafields.find(
-      f => f.namespace === "custom" && f.key === "booking"
-    );
+    console.log("Metafields returned from Shopify:", res.data.metafields);
+
+    const field = res.data.metafields.find(f => f.namespace === "custom" && f.key === "booking");
+    console.log("Booking metafield found:", field);
+
     const bookings = field ? JSON.parse(field.value || "[]") : [];
+    console.log("Parsed bookings:", bookings);
+
     return { metafield: field || null, bookings };
   } catch (err) {
     console.error("Error fetching bookings:", err);
@@ -42,80 +46,23 @@ async function getBookings(productId) {
 
 async function saveBookings(productId, metafield, bookings) {
   if (metafield) {
-    await shopify.put(`/metafields/${metafield.id}.json`, {
-      metafield: { value: JSON.stringify(bookings), type: "json" }
-    });
+    await shopify.put(`/metafields/${metafield.id}.json`, { metafield: { value: JSON.stringify(bookings), type: "json" } });
   } else {
-    await shopify.post(`/products/${productId}/metafields.json`, {
-      metafield: {
-        namespace: "custom",
-        key: "booking",
-        type: "json",
-        value: JSON.stringify(bookings)
-      }
-    });
+    await shopify.post(`/products/${productId}/metafields.json`, { metafield: { namespace: "custom", key: "booking", type: "json", value: JSON.stringify(bookings) } });
   }
 }
 
-// --------------------- Endpoints ---------------------
-
-// Get existing bookings
 app.get("/availability", async (req, res) => {
   try {
     const productId = req.query.product_id;
     if (!productId) return res.json({ bookings: [] });
-
     const { bookings } = await getBookings(productId);
     res.json({ bookings });
-  } catch (err) {
-    console.error(err);
+  } catch {
     res.json({ bookings: [] });
   }
 });
 
-// Validate a booking
-app.post("/validate-booking", async (req, res) => {
-  try {
-    const { productId, checkin, checkout } = req.body;
-    if (!productId || !checkin || !checkout) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    const { bookings } = await getBookings(productId);
-    const newBooking = {
-      start: new Date(checkin).toISOString(),
-      end: new Date(checkout).toISOString()
-    };
-
-    if (isOverlapping(newBooking, bookings)) {
-      return res.status(400).json({ error: "Selected dates are already booked." });
-    }
-
-    res.json({ available: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error while validating booking." });
-  }
-});
-
-// ---------------- CALCULATE PRICE ----------------
-app.post("/calculate-price", (req, res) => {
-  const { basePrice, checkin, checkout } = req.body; // guests ignored
-  if (!basePrice || !checkin || !checkout) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
-
-  const nights = Math.ceil(
-    (new Date(checkout) - new Date(checkin)) / (1000 * 60 * 60 * 24)
-  );
-  const totalPrice = basePrice * nights; // ignore guests
-
-  console.log("📊 /calculate-price called:", { basePrice, checkin, checkout, nights, totalPrice });
-
-  res.json({ totalPrice });
-});
-
-// ---------------- Webhook: save bookings ----------------
 app.post("/webhooks/orders-create", async (req, res) => {
   try {
     const order = req.body;
@@ -126,11 +73,7 @@ app.post("/webhooks/orders-create", async (req, res) => {
       const checkOut = item.properties?.find(p => p.name === "Check Out")?.value;
       if (!checkIn || !checkOut || !item.product_id) continue;
 
-      const booking = {
-        start: new Date(checkIn).toISOString(),
-        end: new Date(checkOut).toISOString()
-      };
-
+      const booking = { start: new Date(checkIn).toISOString(), end: new Date(checkOut).toISOString() };
       const { metafield, bookings } = await getBookings(item.product_id);
       if (isOverlapping(booking, bookings)) continue;
 
