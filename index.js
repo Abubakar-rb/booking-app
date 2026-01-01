@@ -98,37 +98,37 @@ app.post("/validate-booking", async (req, res) => {
   }
 });
 
-// ---------------- Create Draft Order (PRICE FIXED) ----------------
 app.post("/create-draft-order", async (req, res) => {
   try {
     const { productId, checkin, checkout, guests, email } = req.body;
 
+    // ✅ Validate required fields
     if (!productId || !checkin || !checkout || !guests || !email) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // ---------------- SECURE PRICE CALCULATION ----------------
-    const ONE_DAY = 1000 * 60 * 60 * 24;
-    const nights = Math.max(
-      1,
-      Math.round((new Date(checkout) - new Date(checkin)) / ONE_DAY)
-    );
-
-    // Fetch product & variant price from Shopify (authoritative)
+    // 1️⃣ Fetch product to get base price & variant ID
     const productRes = await shopify.get(`/products/${productId}.json`);
     const variant = productRes.data.product.variants[0];
+    const basePrice = Number(variant.price); // Shopify product price (per night per guest)
+    const variantId = variant.id;
 
-    const basePrice = Number(variant.price);
-    const finalPrice = basePrice * nights * Number(guests);
+    // 2️⃣ Calculate nights
+    const nights = Math.ceil(
+      (new Date(checkout) - new Date(checkin)) / (1000 * 60 * 60 * 24)
+    );
+    
+    // 3️⃣ Calculate total price dynamically
+    const totalPrice = basePrice * nights * guests;
 
-    // ---------------- CREATE DRAFT ORDER ----------------
+    // 4️⃣ Draft order payload
     const draftOrderPayload = {
       draft_order: {
         line_items: [
           {
-            variant_id: variant.id,
+            variant_id: variantId,
             quantity: 1,
-            custom_price: Number(finalPrice.toFixed(2)),
+            custom_price: Number(totalPrice.toFixed(2)),
             properties: [
               { name: "Check In", value: checkin },
               { name: "Check Out", value: checkout },
@@ -144,22 +144,20 @@ app.post("/create-draft-order", async (req, res) => {
       }
     };
 
-    console.log("Draft order payload:", JSON.stringify(draftOrderPayload, null, 2));
-
+    // 5️⃣ Create draft order
     const response = await shopify.post("/draft_orders.json", draftOrderPayload);
     const draftOrder = response.data.draft_order;
 
     console.log("FINAL DRAFT ORDER:", draftOrder);
 
-    res.json({
-      invoiceUrl: draftOrder.invoice_url
-    });
+    res.json({ invoiceUrl: draftOrder.invoice_url });
 
   } catch (err) {
     console.error("Error in /create-draft-order:", err.response?.data || err);
     res.status(500).json({ error: "Error creating draft order" });
   }
 });
+
 
 // ---------------- Webhook: save bookings ----------------
 app.post("/webhooks/orders-create", async (req, res) => {
