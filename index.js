@@ -119,7 +119,7 @@ app.post("/create-draft-order", async (req, res) => {
     );
 
     // 3️⃣ Calculate total price dynamically
-    const totalPrice = basePrice * nights * guests;
+    const totalPrice = basePrice * nights;
     const totalPriceStr = totalPrice.toFixed(2).toString(); // Shopify prefers string with 2 decimals
 
     console.log("🏷 Calculated totalPrice:", totalPriceStr);
@@ -130,8 +130,8 @@ app.post("/create-draft-order", async (req, res) => {
     line_items: [
       {
         variant_id: variantId,
-        quantity: 1, // quantity MUST be 1
-        custom_price: totalPriceStr, // string, 2 decimals
+        quantity: night,
+        custom_price: basePrice.toFixed(2),
         properties: [
           { name: "Check In", value: checkin },
           { name: "Check Out", value: checkout },
@@ -171,8 +171,8 @@ app.post("/create-draft-order", async (req, res) => {
 });
 
 app.post("/calculate-price", (req, res) => {
-  const { basePrice, guests, checkin, checkout } = req.body;
-  if (!basePrice || !guests || !checkin || !checkout) {
+  const { basePrice, checkin, checkout } = req.body; // remove guests
+  if (!basePrice || !checkin || !checkout) {
     return res.status(400).json({ error: "Missing fields" });
   }
 
@@ -180,12 +180,13 @@ app.post("/calculate-price", (req, res) => {
     (new Date(checkout) - new Date(checkin)) / (1000 * 60 * 60 * 24)
   );
 
-  const totalPrice = basePrice * nights * guests;
+  const totalPrice = basePrice * nights; // ✅ guests ignored
 
-  console.log("📊 /calculate-price called:", { basePrice, guests, checkin, checkout, nights, totalPrice });
+  console.log("📊 /calculate-price called:", { basePrice, checkin, checkout, nights, totalPrice });
 
   res.json({ totalPrice });
 });
+
 
 
 // ---------------- Webhook: save bookings ----------------
