@@ -29,7 +29,9 @@ function isOverlapping(newB, existing) {
 async function getBookings(productId) {
   try {
     const res = await shopify.get(`/products/${productId}/metafields.json`);
-    const field = res.data.metafields.find(f => f.namespace === "custom" && f.key === "booking");
+    const field = res.data.metafields.find(
+      f => f.namespace === "custom" && f.key === "booking"
+    );
     const bookings = field ? JSON.parse(field.value || "[]") : [];
     return { metafield: field || null, bookings };
   } catch (err) {
@@ -40,7 +42,9 @@ async function getBookings(productId) {
 
 async function saveBookings(productId, metafield, bookings) {
   if (metafield) {
-    await shopify.put(`/metafields/${metafield.id}.json`, { metafield: { value: JSON.stringify(bookings), type: "json" } });
+    await shopify.put(`/metafields/${metafield.id}.json`, {
+      metafield: { value: JSON.stringify(bookings), type: "json" }
+    });
   } else {
     await shopify.post(`/products/${productId}/metafields.json`, {
       metafield: {
@@ -60,6 +64,7 @@ app.get("/availability", async (req, res) => {
   try {
     const productId = req.query.product_id;
     if (!productId) return res.json({ bookings: [] });
+
     const { bookings } = await getBookings(productId);
     res.json({ bookings });
   } catch (err) {
@@ -68,14 +73,19 @@ app.get("/availability", async (req, res) => {
   }
 });
 
-// Validate a booking before adding to cart
+// Validate a booking
 app.post("/validate-booking", async (req, res) => {
   try {
     const { productId, checkin, checkout } = req.body;
-    if (!productId || !checkin || !checkout) return res.status(400).json({ error: "Missing required fields" });
+    if (!productId || !checkin || !checkout) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
     const { bookings } = await getBookings(productId);
-    const newBooking = { start: new Date(checkin).toISOString(), end: new Date(checkout).toISOString() };
+    const newBooking = {
+      start: new Date(checkin).toISOString(),
+      end: new Date(checkout).toISOString()
+    };
 
     if (isOverlapping(newBooking, bookings)) {
       return res.status(400).json({ error: "Selected dates are already booked." });
@@ -88,78 +98,62 @@ app.post("/validate-booking", async (req, res) => {
   }
 });
 
-// Calculate dynamic price
-app.post("/calculate-price", async (req, res) => {
-  try {
-    const { basePrice, guests, checkin, checkout } = req.body;
-    if (!basePrice || !guests || !checkin || !checkout) return res.status(400).json({ error: "Missing required fields" });
-
-    const nights = Math.ceil((new Date(checkout) - new Date(checkin)) / (1000 * 60 * 60 * 24));
-    const totalPrice = basePrice * nights * guests;
-
-    res.json({ nights: nights || 1, totalPrice });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error while calculating price." });
-  }
-});
-
-// ---------------- Create Draft Order (dynamic pricing) ----------------
+// ---------------- Create Draft Order (PRICE FIXED) ----------------
 app.post("/create-draft-order", async (req, res) => {
   try {
-    const { productId, checkin, checkout, guests, totalPrice, email } = req.body;
+    const { productId, checkin, checkout, guests, email } = req.body;
 
-    // ✅ Validate required fields
-    if (!productId || !checkin || !checkout || !guests || !totalPrice || !email) {
+    if (!productId || !checkin || !checkout || !guests || !email) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // 1️⃣ Fetch product to get a valid variant ID
-    const productRes = await shopify.get(`/products/${productId}.json`);
-    const variantId = productRes.data.product.variants[0].id; // pick the first variant
+    // ---------------- SECURE PRICE CALCULATION ----------------
+    const ONE_DAY = 1000 * 60 * 60 * 24;
+    const nights = Math.max(
+      1,
+      Math.round((new Date(checkout) - new Date(checkin)) / ONE_DAY)
+    );
 
-    // 2️⃣ Draft order payload with proper custom_price & properties array
+    // Fetch product & variant price from Shopify (authoritative)
+    const productRes = await shopify.get(`/products/${productId}.json`);
+    const variant = productRes.data.product.variants[0];
+
+    const basePrice = Number(variant.price);
+    const finalPrice = basePrice * nights * Number(guests);
+
+    // ---------------- CREATE DRAFT ORDER ----------------
     const draftOrderPayload = {
       draft_order: {
         line_items: [
           {
-            variant_id: variantId,
+            variant_id: variant.id,
             quantity: 1,
-            custom_price: Number(totalPrice.toFixed(2)), // ✅ must be a number
+            custom_price: Number(finalPrice.toFixed(2)),
             properties: [
               { name: "Check In", value: checkin },
               { name: "Check Out", value: checkout },
-              { name: "Guests", value: guests }
+              { name: "Guests", value: guests },
+              { name: "Nights", value: nights }
             ]
           }
         ],
         customer: { email },
         use_customer_default_address: true,
         send_invoice: true,
-        tax_exempt: true // optional, keeps exact total
+        tax_exempt: true
       }
     };
-    
 
-    // 🔹 Debug log to see payload before sending to Shopify
     console.log("Draft order payload:", JSON.stringify(draftOrderPayload, null, 2));
 
-    // 3️⃣ Create draft order
     const response = await shopify.post("/draft_orders.json", draftOrderPayload);
+    const draftOrder = response.data.draft_order;
 
-    // 🔹 Debug log Shopify response
-    console.log("Shopify draft order response:", response.data.draft_order);
+    console.log("FINAL DRAFT ORDER:", draftOrder);
 
- const draftOrder = response.data.draft_order;
-
-// 🔴 LOG IT
-console.log("FINAL DRAFT ORDER:", draftOrder);
-
-// ✅ ALWAYS RETURN INVOICE URL
-res.json({
-  invoiceUrl: draftOrder.invoice_url
-});
-
+    res.json({
+      invoiceUrl: draftOrder.invoice_url
+    });
 
   } catch (err) {
     console.error("Error in /create-draft-order:", err.response?.data || err);
@@ -167,9 +161,7 @@ res.json({
   }
 });
 
-
-
-// Webhook: save bookings when order created
+// ---------------- Webhook: save bookings ----------------
 app.post("/webhooks/orders-create", async (req, res) => {
   try {
     const order = req.body;
@@ -180,9 +172,12 @@ app.post("/webhooks/orders-create", async (req, res) => {
       const checkOut = item.properties?.find(p => p.name === "Check Out")?.value;
       if (!checkIn || !checkOut || !item.product_id) continue;
 
-      const booking = { start: new Date(checkIn).toISOString(), end: new Date(checkOut).toISOString() };
-      const { metafield, bookings } = await getBookings(item.product_id);
+      const booking = {
+        start: new Date(checkIn).toISOString(),
+        end: new Date(checkOut).toISOString()
+      };
 
+      const { metafield, bookings } = await getBookings(item.product_id);
       if (isOverlapping(booking, bookings)) continue;
 
       bookings.push(booking);
@@ -199,4 +194,3 @@ app.post("/webhooks/orders-create", async (req, res) => {
 app.listen(PORT || 3000, () => {
   console.log("🚀 Booking server running");
 });
-  
