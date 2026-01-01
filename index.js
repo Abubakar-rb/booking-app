@@ -128,7 +128,7 @@ app.post("/create-draft-order", async (req, res) => {
           {
             variant_id: variantId,
             quantity: 1,
-            custom_price: Number(totalPrice.toFixed(2)),
+            custom_price: totalPrice.toString(),
             properties: [
               { name: "Check In", value: checkin },
               { name: "Check Out", value: checkout },
